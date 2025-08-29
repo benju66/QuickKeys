@@ -73,3 +73,7 @@ dmypy.json
 *.db
 *.bak
 *.tmp
+
+.venv/
+__pycache__/
+*.pyc

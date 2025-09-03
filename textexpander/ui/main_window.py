@@ -136,6 +136,14 @@ class SnippetManagerWindow(QtWidgets.QMainWindow):
         hl2 = QtWidgets.QHBoxLayout()
         hl2.addWidget(refresh_apps)
         hl2.addWidget(active_btn)
+
+        select_all_btn = QtWidgets.QPushButton("Select All")
+        select_all_btn.clicked.connect(lambda: self._set_all_apps_checked(True))
+        deselect_all_btn = QtWidgets.QPushButton("Deselect All")
+        deselect_all_btn.clicked.connect(lambda: self._set_all_apps_checked(False))
+
+        hl2.addWidget(select_all_btn)
+        hl2.addWidget(deselect_all_btn)
         hl2.addStretch()
         hl2.addWidget(save_apps)
         layout.addLayout(hl2)
@@ -167,7 +175,7 @@ class SnippetManagerWindow(QtWidgets.QMainWindow):
             return
         self.repo.set_all(data)
         self.repo.save()
-        self.statusBar().showMessage("Saved (with automatic backup). Press Ctrl+Alt+R to reload in background.", 5000)
+        self.statusBar().showMessage("\u2713 Saved! Press Ctrl+Alt+R to apply changes to running expander.", 5000)
 
     def _import(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Import snippets", "", "JSON Files (*.json)")
@@ -247,7 +255,7 @@ class SnippetManagerWindow(QtWidgets.QMainWindow):
             overrides[item.text()] = item.checkState() == QtCore.Qt.CheckState.Checked
         self.settings.per_app_overrides = overrides
         self.settings.save()
-        self.statusBar().showMessage("Per-app overrides saved.", 3000)
+        self.statusBar().showMessage("\u2713 Per-app settings saved! Press Ctrl+Alt+R to apply.", 5000)
 
     def _add_current_app(self):
         name = get_foreground_process_name()
@@ -256,3 +264,9 @@ class SnippetManagerWindow(QtWidgets.QMainWindow):
         self.settings.per_app_overrides[name] = True
         self.settings.save()
         self._populate_per_app_list()
+
+    def _set_all_apps_checked(self, checked: bool):
+        state = QtCore.Qt.CheckState.Checked if checked else QtCore.Qt.CheckState.Unchecked
+        for i in range(self.apps_list.count()):
+            item = self.apps_list.item(i)
+            item.setCheckState(state)

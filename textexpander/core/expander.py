@@ -21,7 +21,7 @@ class ExpanderEngine:
     def run(self):
         # Hotkeys
         keyboard.add_hotkey('ctrl+alt+e', self.toggle_enabled)
-        keyboard.add_hotkey('ctrl+alt+r', self.reload_snippets)
+        keyboard.add_hotkey('ctrl+alt+r', self.reload_all)  # Changed to reload both
         keyboard.add_hotkey('ctrl+alt+z', lambda: keyboard.send('ctrl+z'))  # undo
 
         # Optional: Expand on Tab (suppressed)
@@ -46,11 +46,28 @@ class ExpanderEngine:
         if self.logger and self.settings.logging_enabled:
             self.logger.info(f"enabled={self.settings.enabled}")
 
-    def reload_snippets(self):
+    def reload_all(self):
+        """Reload both snippets and settings from disk"""
         with self._lock:
-            self.repo.set_all(self.repo.all())  # noop, API symmetry
+            # Reload settings from disk
+            fresh_settings = Settings.load()
+            self.settings.enabled = fresh_settings.enabled
+            self.settings.expand_on_tab = fresh_settings.expand_on_tab
+            self.settings.trigger_prefix = fresh_settings.trigger_prefix
+            self.settings.blacklist_process_names = fresh_settings.blacklist_process_names
+            self.settings.per_app_overrides = fresh_settings.per_app_overrides
+            self.settings.logging_enabled = fresh_settings.logging_enabled
+            
+            # Reload snippets from disk
+            fresh_repo = SnippetRepository.load_or_create()
+            self.repo.set_all(fresh_repo.all())
+            
         if self.logger and self.settings.logging_enabled:
-            self.logger.info("snippets reloaded (from memory)")
+            self.logger.info("Settings and snippets reloaded from disk")
+
+    def reload_snippets(self):
+        """Alias for backward compatibility"""
+        self.reload_all()
 
     # ---- Core hook handlers
     def _on_key_event(self, event):
@@ -138,15 +155,35 @@ class ExpanderEngine:
     def _allowed_in_foreground_app(self) -> bool:
         proc = get_foreground_process_name()
         title = get_foreground_window_title().lower()
-        # Blacklist by process
+        
+        # Debug logging to help troubleshoot
+        if self.logger and self.settings.logging_enabled:
+            self.logger.debug(f"Checking app: process='{proc}', title='{title}'")
+            self.logger.debug(f"Blacklist: {self.settings.blacklist_process_names}")
+            self.logger.debug(f"Per-app overrides: {self.settings.per_app_overrides}")
+        
+        # Blacklist by process (highest priority - always blocks)
         if proc in (p.lower() for p in self.settings.blacklist_process_names):
+            if self.logger and self.settings.logging_enabled:
+                self.logger.debug(f"Blocked by blacklist: {proc}")
             return False
-        # Per-app overrides (False disables, True forces enable)
+            
+        # Per-app overrides (explicit user choice)
         if proc in self.settings.per_app_overrides:
-            return bool(self.settings.per_app_overrides[proc])
-        # crude password/title check
+            allowed = bool(self.settings.per_app_overrides[proc])
+            if self.logger and self.settings.logging_enabled:
+                self.logger.debug(f"Per-app override for {proc}: {allowed}")
+            return allowed
+            
+        # Auto-block password fields (only if no explicit override)
         if "password" in title or "signin" in title or "login" in title:
+            if self.logger and self.settings.logging_enabled:
+                self.logger.debug(f"Blocked by title keyword: {title}")
             return False
+            
+        # Default: allow
+        if self.logger and self.settings.logging_enabled:
+            self.logger.debug(f"Allowed by default: {proc}")
         return True
 
 def _split_cursor(text: str) -> tuple[str, str]:
